@@ -1,0 +1,71 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: testing-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.9, pipelines.kubeflow.org/pipeline_compilation_time: '2021-11-29T10:45:31.856525',
+    pipelines.kubeflow.org/pipeline_spec: '{"name": "testing"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.9}
+spec:
+  entrypoint: testing
+  templates:
+  - name: test
+    container:
+      args: [--executor_input, '{{$}}', --function_to_execute, test]
+      command:
+      - sh
+      - -c
+      - |2
+
+        if ! [ -x "$(command -v pip)" ]; then
+            python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip
+        fi
+
+        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'kfp==1.8.9' && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp -d)
+        printf "%s" "$0" > "$program_path/ephemeral_component.py"
+        python3 -m kfp.v2.components.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+      - |2+
+
+        import kfp
+        from kfp.v2 import dsl
+        from kfp.v2.dsl import *
+        from typing import *
+
+        def test(x: str) -> str:
+            return x
+
+      image: python:3.7
+    inputs:
+      artifacts:
+      - name: x
+        path: /tmp/inputs/x/data
+        raw: {data: hello}
+    outputs:
+      artifacts:
+      - {name: test-Output, path: /tmp/outputs/Output/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.9
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
+          {"args": ["--executor_input", {"executorInput": null}, "--function_to_execute",
+          "test"], "command": ["sh", "-c", "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3
+          -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet     --no-warn-script-location ''kfp==1.8.9''
+          && \"$0\" \"$@\"\n", "sh", "-ec", "program_path=$(mktemp -d)\nprintf \"%s\"
+          \"$0\" > \"$program_path/ephemeral_component.py\"\npython3 -m kfp.v2.components.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+          "\nimport kfp\nfrom kfp.v2 import dsl\nfrom kfp.v2.dsl import *\nfrom typing
+          import *\n\ndef test(x: str) -> str:\n    return x\n\n"], "image": "python:3.7"}},
+          "inputs": [{"name": "x", "type": "String"}], "name": "Test", "outputs":
+          [{"name": "Output", "type": "String"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: testing
+    dag:
+      tasks:
+      - {name: test, template: test}
+  arguments:
+    parameters: []
+  serviceAccountName: pipeline-runner
